@@ -1,0 +1,17 @@
+[package]
+name = "camera_system"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+opencv = "0.92"
+anyhow = "1.0"
+chrono = "0.4"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1", features = ["full"] }
+flume = "0.11" # <--- The Engine
+actix-web = "4.12.1"
+actix-files = "0.6.9"
+actix-cors = "0.7.1"
+local-ip-address = "0.6.8"

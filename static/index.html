@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sentinel Multi-Cam Manager</title>
+  <style>
+    :root {
+      /* Theme: Light Blue & White */
+      --bg-body: #f8fafc;
+      --bg-panel: #ffffff;
+      --primary: #0ea5e9;       /* Sky Blue */
+      --primary-dark: #0284c7;
+      --primary-soft: #e0f2fe;
+      --text-main: #0f172a;
+      --text-muted: #64748b;
+      --danger: #ef4444;
+      --border: #e2e8f0;
+      --radius: 12px;
+      --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Inter, sans-serif; }
+
+    body {
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      background-color: var(--bg-body);
+      color: var(--text-main);
+      overflow: hidden;
+    }
+
+    /* --- TOP HEADER (Alerts) --- */
+    header {
+      height: 60px;
+      background: var(--bg-panel);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+      flex-shrink: 0;
+      z-index: 50;
+    }
+
+    .alert-box {
+      display: flex; align-items: center; gap: 12px;
+      font-weight: 600; font-size: 0.9rem;
+    }
+
+    .status-dot {
+      width: 10px; height: 10px; background: #22c55e; border-radius: 50%;
+      box-shadow: 0 0 0 4px #dcfce7; transition: background 0.3s;
+    }
+    .status-dot.alert {
+      background: var(--danger); box-shadow: 0 0 0 4px #fee2e2;
+      animation: pulseRed 1s infinite;
+    }
+    @keyframes pulseRed { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+
+    /* --- LAYOUT --- */
+    .layout-container { display: flex; flex: 1; height: calc(100vh - 60px); }
+
+    /* --- SIDEBAR (Controls) --- */
+    aside {
+      width: 300px;
+      background: var(--bg-panel);
+      border-right: 1px solid var(--border);
+      display: flex; flex-direction: column;
+      padding: 24px; flex-shrink: 0;
+      overflow-y: auto;
+    }
+
+    .sidebar-header { margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid var(--border); }
+    .sidebar-title { font-size: 1.1rem; font-weight: 800; color: var(--primary-dark); }
+    .selection-count { font-size: 0.85rem; color: var(--text-muted); margin-top: 4px; }
+
+    .btn-select-all {
+      width: 100%; padding: 8px; margin-top: 12px;
+      background: var(--bg-body); border: 1px solid var(--border);
+      color: var(--text-muted); border-radius: 6px; cursor: pointer;
+      font-weight: 600; font-size: 0.8rem;
+    }
+    .btn-select-all:hover { background: var(--primary-soft); color: var(--primary-dark); border-color: var(--primary-soft); }
+
+    /* Control Groups */
+    .control-group { margin-bottom: 24px; opacity: 0.5; pointer-events: none; transition: opacity 0.2s; }
+    .control-group.active { opacity: 1; pointer-events: auto; }
+    
+    .group-label {
+      font-size: 0.75rem; text-transform: uppercase; font-weight: 700;
+      color: var(--text-muted); margin-bottom: 12px; display: block;
+    }
+
+    .model-row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 10px 0; border-bottom: 1px dashed #f1f5f9;
+    }
+
+    /* Toggle Switch */
+    .switch { position: relative; display: inline-block; width: 44px; height: 24px; }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .slider {
+      position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0;
+      background-color: #cbd5e1; transition: .3s; border-radius: 34px;
+    }
+    .slider:before {
+      position: absolute; content: ""; height: 18px; width: 18px;
+      left: 3px; bottom: 3px; background-color: white; transition: .3s; border-radius: 50%;
+    }
+    input:checked + .slider { background-color: var(--primary); }
+    input:checked + .slider:before { transform: translateX(20px); }
+
+    /* --- MAIN GRID --- */
+    main {
+      flex: 1; padding: 30px; overflow-y: auto; background: var(--bg-body);
+    }
+    .grid-header { margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; }
+    .grid-header h2 { font-size: 1.5rem; }
+
+    .camera-grid {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px;
+    }
+
+    /* Camera Tile */
+    .cam-card {
+      background: var(--bg-panel); border-radius: var(--radius);
+      overflow: hidden; cursor: pointer; position: relative;
+      border: 3px solid transparent; box-shadow: var(--shadow);
+      transition: all 0.2s;
+    }
+    .cam-card:hover { transform: translateY(-3px); }
+    
+    /* MULTI-SELECT STATE */
+    .cam-card.selected {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 4px var(--primary-soft);
+    }
+    .cam-card.selected::before {
+      content: "✓"; position: absolute; top: 10px; right: 10px;
+      width: 24px; height: 24px; background: var(--primary); color: white;
+      border-radius: 50%; z-index: 10; display: flex;
+      align-items: center; justify-content: center; font-weight: bold; font-size: 14px;
+    }
+
+    .cam-view {
+      height: 180px; background: #000; display: flex;
+      align-items: center; justify-content: center; overflow: hidden;
+    }
+    .cam-view img { width: 100%; height: 100%; object-fit: cover; opacity: 0.9; }
+    .placeholder { color: #64748b; font-size: 0.8rem; }
+
+    .cam-info { padding: 14px; }
+    .cam-name { font-weight: 700; color: var(--text-main); }
+    .active-models { display: flex; gap: 4px; margin-top: 8px; flex-wrap: wrap; }
+    
+    .badge {
+      font-size: 0.65rem; padding: 2px 6px; border-radius: 4px;
+      background: var(--primary-soft); color: var(--primary-dark); font-weight: 700;
+    }
+
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="alert-box">
+      <div id="status-icon" class="status-dot"></div>
+      <span id="log-text">System Ready. Select cameras to configure.</span>
+    </div>
+    <div style="font-size:0.85rem; color:var(--text-muted)">v4.0 Multi-Select</div>
+  </header>
+
+  <div class="layout-container">
+    
+    <aside>
+      <div class="sidebar-header">
+        <div class="sidebar-title">Batch Config</div>
+        <div class="selection-count" id="sel-count">0 Cameras Selected</div>
+        <button class="btn-select-all" onclick="toggleSelectAll()">Select All / None</button>
+      </div>
+
+      <div id="controls-wrapper" class="control-group">
+        <div class="group-label">Apply to Selection</div>
+        
+        <div class="model-row">
+          <div><strong>Face ID</strong><small>Recognition</small></div>
+          <label class="switch"><input type="checkbox" id="sw-face" onchange="applyBatch('face')"><span class="slider"></span></label>
+        </div>
+
+        <div class="model-row">
+          <div><strong>Weapon</strong><small>YOLOv8</small></div>
+          <label class="switch"><input type="checkbox" id="sw-weapon" onchange="applyBatch('weapon')"><span class="slider"></span></label>
+        </div>
+
+        <div class="model-row">
+          <div><strong>Intruder</strong><small>Motion</small></div>
+          <label class="switch"><input type="checkbox" id="sw-intruder" onchange="applyBatch('intruder')"><span class="slider"></span></label>
+        </div>
+
+        <div class="model-row">
+          <div><strong>Fire</strong><small>Thermal</small></div>
+          <label class="switch"><input type="checkbox" id="sw-fire" onchange="applyBatch('fire')"><span class="slider"></span></label>
+        </div>
+        
+        <div class="model-row">
+            <div><strong>Fall</strong><small>Pose</small></div>
+            <label class="switch"><input type="checkbox" id="sw-fall" onchange="applyBatch('fall')"><span class="slider"></span></label>
+        </div>
+
+        <div class="model-row">
+            <div><strong>Vehicle</strong><small>Plates</small></div>
+            <label class="switch"><input type="checkbox" id="sw-vehicle" onchange="applyBatch('vehicle')"><span class="slider"></span></label>
+        </div>
+
+      </div>
+      
+      <div id="hint-text" style="font-size:0.8rem; color:var(--text-muted); text-align:center;">
+        Select one or more cameras to enable controls.
+      </div>
+    </aside>
+
+    <main>
+      <div class="grid-header">
+        <h2>Dashboard</h2>
+      </div>
+      <div class="camera-grid" id="cam-grid"></div>
+    </main>
+  </div>
+
+<script>
+  // STATE
+  let cameras = [];
+  let selectedIds = new Set(); // Stores multiple IDs
+  let activeModels = {}; // { 1: ["face"], 2: ["fire", "face"] }
+  let latestImages = {};
+
+  // ELEMENTS
+  const gridEl = document.getElementById('cam-grid');
+  const countEl = document.getElementById('sel-count');
+  const controlsEl = document.getElementById('controls-wrapper');
+  const hintEl = document.getElementById('hint-text');
+  const logEl = document.getElementById('log-text');
+  const statusIcon = document.getElementById('status-icon');
+
+  const switches = {
+    face: document.getElementById('sw-face'),
+    weapon: document.getElementById('sw-weapon'),
+    intruder: document.getElementById('sw-intruder'),
+    fire: document.getElementById('sw-fire'),
+    fall: document.getElementById('sw-fall'),
+    vehicle: document.getElementById('sw-vehicle'),
+  };
+
+  // --- INIT ---
+  async function init() {
+    try {
+      const res = await fetch('/api/init');
+      const config = await res.json();
+      cameras = config.cameras;
+
+      // Load initial state
+      for(let cam of cameras) {
+        try {
+          const s = await fetch(`/api/status/${cam.id}`);
+          activeModels[cam.id] = await s.json();
+        } catch(e) { activeModels[cam.id] = []; }
+      }
+
+      renderGrid();
+      startPolling();
+
+    } catch(e) {
+      log("Demo Mode (Backend Offline)");
+      cameras = [
+        {id: 1, name: "Entrance"}, {id: 2, name: "Warehouse"},
+        {id: 3, name: "Parking"}, {id: 4, name: "Lobby"}
+      ];
+      cameras.forEach(c => activeModels[c.id] = []);
+      renderGrid();
+    }
+  }
+
+  // --- RENDERING ---
+  function renderGrid() {
+    gridEl.innerHTML = '';
+    
+    cameras.forEach(cam => {
+      const isSelected = selectedIds.has(cam.id);
+      const models = activeModels[cam.id] || [];
+      const imgSrc = latestImages[cam.id];
+
+      // Badges
+      const badges = models.map(m => `<span class="badge">${m.toUpperCase()}</span>`).join('');
+
+      const div = document.createElement('div');
+      div.className = `cam-card ${isSelected ? 'selected' : ''}`;
+      div.onclick = () => toggleSelection(cam.id);
+
+      div.innerHTML = `
+        <div class="cam-view">
+          ${imgSrc ? `<img src="${imgSrc}?t=${Date.now()}" loading="lazy">` : '<span class="placeholder">Waiting...</span>'}
+        </div>
+        <div class="cam-info">
+          <div class="cam-name">${cam.name}</div>
+          <div class="active-models">${badges}</div>
+        </div>
+      `;
+      gridEl.appendChild(div);
+    });
+
+    updateSidebarUI();
+  }
+
+  // --- SELECTION LOGIC ---
+  function toggleSelection(id) {
+    if (selectedIds.has(id)) {
+      selectedIds.delete(id);
+    } else {
+      selectedIds.add(id);
+    }
+    renderGrid();
+  }
+
+  function toggleSelectAll() {
+    if (selectedIds.size === cameras.length) {
+      selectedIds.clear(); // Deselect all
+    } else {
+      cameras.forEach(c => selectedIds.add(c.id)); // Select all
+    }
+    renderGrid();
+  }
+
+  function updateSidebarUI() {
+    const count = selectedIds.size;
+    countEl.innerText = `${count} Cameras Selected`;
+
+    if (count > 0) {
+      controlsEl.classList.add('active');
+      hintEl.style.display = 'none';
+      
+      // OPTIONAL: If only 1 camera selected, sync switches to match its state
+      if (count === 1) {
+        const [id] = selectedIds;
+        const mods = activeModels[id] || [];
+        for (const [key, el] of Object.entries(switches)) {
+            el.checked = mods.includes(key);
+        }
+      } else {
+        // If multiple, reset switches to 'off' visual state (or indeterminate)
+        // User toggling ON will force ON for all.
+        for (const el of Object.values(switches)) el.checked = false;
+      }
+      
+    } else {
+      controlsEl.classList.remove('active');
+      hintEl.style.display = 'block';
+    }
+  }
+
+  // --- BATCH CONTROL ---
+  async function applyBatch(model) {
+    if (selectedIds.size === 0) return;
+
+    const isEnabled = switches[model].checked;
+    const ids = Array.from(selectedIds);
+
+    // Optimistic Update: Apply to ALL selected cameras
+    ids.forEach(id => {
+        let list = activeModels[id] || [];
+        if (isEnabled) {
+            if (!list.includes(model)) list.push(model);
+        } else {
+            list = list.filter(m => m !== model);
+        }
+        activeModels[id] = list;
+    });
+
+    renderGrid();
+    log(`Applied ${model.toUpperCase()} to ${ids.length} cameras`);
+
+    // Send requests
+    for (const id of ids) {
+      try {
+        await fetch('/api/toggle', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ cam_id: id, model: model, enabled: isEnabled })
+        });
+      } catch(e) { console.error(e); }
+    }
+  }
+
+  // --- POLLING & ALERTS ---
+  function startPolling() {
+    setInterval(async () => {
+      try {
+        const res = await fetch('/api/events');
+        const files = await res.json();
+        
+        if(files.length > 0) {
+            // Very basic matching logic for demo
+            cameras.forEach(c => {
+                const match = files.find(f => f.includes(c.name.split(' ')[0]));
+                if(match) latestImages[c.id] = `/captures/${match}`;
+            });
+            renderGrid();
+
+            // Alert Logic
+            const latest = files[files.length-1]; // Assuming order
+            if(latest && !latest.includes("old")) { 
+                 logEl.innerText = "⚠️ Detection Event: " + latest;
+                 logEl.style.color = "var(--danger)";
+                 statusIcon.classList.add('alert');
+                 setTimeout(()=>{ 
+                    logEl.style.color = "var(--text-main)";
+                    statusIcon.classList.remove('alert');
+                 }, 3000);
+            }
+        }
+      } catch(e){}
+    }, 2000);
+  }
+
+  function log(msg) { logEl.innerText = msg; }
+
+  // Start
+  init();
+
+</script>
+</body>
+</html>

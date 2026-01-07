@@ -1,0 +1,18 @@
+# --- System & Environment ---
+target/
+**/*.DS_Store
+.env
+
+# --- Data & Captures ---
+captures/
+image_db/
+models/
+config.json  # Optional: Keep this ignored if it has passwords, otherwise remove this line
+
+# --- Ignored Source Files (Keep only main.rs) ---
+src/*
+!src/main.rs
+
+# --- Ignored Static Files (Keep only index.html) ---
+static/*
+!static/index.html
