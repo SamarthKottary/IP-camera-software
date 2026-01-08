@@ -3,11 +3,23 @@ target/
 **/*.DS_Store
 .env
 
-# --- Data & Captures ---
-captures/
-image_db/
-models/
-config.json  # Optional: Keep this ignored if it has passwords, otherwise remove this line
+# --- Large Data & Models ---
+
+# Ignore everything inside captures...
+captures/*
+# ...but keep the folder (by keeping this file)
+!captures/.gitkeep
+
+# Ignore everything inside image_db...
+image_db/*
+!image_db/.gitkeep
+
+# Ignore everything inside models...
+models/*
+!models/.gitkeep
+
+
+
 
 # --- Ignored Source Files (Keep only main.rs) ---
 src/*

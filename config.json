@@ -1,0 +1,22 @@
+{
+  "system_models": {
+    "face": "models/face_detection_yunet_2023mar.onnx",
+    "fire": "models/yolov8n-fire.onnx",
+    "weapon": "models/yolov8n-weapon.onnx",
+    "pose": "models/yolov8n-pose.onnx",
+    "emotion": "models/yolov8n-emotion.onnx",
+    "mask": "models/yolov8n-mask.onnx"
+  },
+  "cameras": [
+    {
+      "id": 1,
+      "name": "CP-Plus",
+      "url": "rtsp://admin:12345678@192.168.1.54:5543/live/channel1"
+    },
+    {
+      "id": 2,
+      "name": "Tapo",
+      "url": "rtsp://admin1:12345678@192.168.1.60:554/stream2" 
+    }
+  ]
+}
