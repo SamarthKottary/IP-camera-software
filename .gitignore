@@ -28,3 +28,4 @@ src/*
 # --- Ignored Static Files (Keep only index.html) ---
 static/*
 !static/index.html
+!static/style.css
