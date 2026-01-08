@@ -49,6 +49,8 @@ struct AppState {
     processed_count: Mutex<u64>,
     skipped_count: Mutex<u64>,
     captured_count: Mutex<u64>,
+    // Dynamic Names Override
+    camera_names: Mutex<HashMap<usize, String>>,
 }
 
 #[derive(Deserialize)]
@@ -58,10 +60,26 @@ struct ToggleReq {
     enabled: bool,
 }
 
+#[derive(Deserialize)]
+struct RenameReq {
+    cam_id: usize,
+    new_name: String,
+}
+
 // --- API ---
 #[get("/api/init")]
 async fn api_init(data: web::Data<Arc<AppState>>) -> impl Responder {
-    HttpResponse::Ok().json(&data.config)
+    let mut config = data.config.clone();
+    let names = data.camera_names.lock().unwrap();
+    
+    // Override names
+    for cam in &mut config.cameras {
+        if let Some(new_name) = names.get(&cam.id) {
+            cam.name = new_name.clone();
+        }
+    }
+    
+    HttpResponse::Ok().json(&config)
 }
 
 #[get("/api/status/{cam_id}")]
@@ -86,6 +104,31 @@ async fn api_toggle(data: web::Data<Arc<AppState>>, req: web::Json<ToggleReq>) -
         println!("🔴 DISABLED [{}] on Camera {}", req.model, req.cam_id);
     }
     HttpResponse::Ok().body("Updated")
+}
+
+#[post("/api/rename_camera")]
+async fn api_rename(data: web::Data<Arc<AppState>>, req: web::Json<RenameReq>) -> impl Responder {
+    // 1. Update In-Memory Config (Dangerous if utilizing read-lock elsewhere, but config is not mutexed in AppState def? Wait, it is NOT mutexed in struct def)
+    // Wait, let's check AppState struct definition:
+    // struct AppState { active_switches: Mutex<...>, config: SystemConfig, ... }
+    // The config is immutable in the Arc<AppState>. We cannot mutate it unless we wrap it in Mutex/RwLock.
+    // However, I can't change the struct definition easily without breaking other things.
+    // CHECK: How is config used? It's cloned in main for camera loops, but the web API reads from it.
+    // If I want to mutate it, I must wrap it.
+    // Let me check the struct definition again in the next tool call or assume I need to wrap it.
+    // Actually, looking at the code I viewed earlier:
+    // struct AppState { active_switches: Mutex<...>, config: SystemConfig, ... }
+    // Yes, 'config' is not mutable.
+    
+    // DECISION: I need to wrap config in Mutex<SystemConfig> to allow updates. 
+    // This requires refactoring AppState and all its usages. 
+    // OR create a separate `camera_names: Mutex<HashMap<usize, String>>` in AppState effectively overriding the config names.
+    // The separate map is safer/easier refactor.
+    
+    let mut names = data.camera_names.lock().unwrap();
+    names.insert(req.cam_id, req.new_name.clone());
+    
+    HttpResponse::Ok().body("Renamed")
 }
 
 #[get("/api/events")]
@@ -120,6 +163,7 @@ async fn main() -> Result<()> {
         processed_count: Mutex::new(0),
         skipped_count: Mutex::new(0),
         captured_count: Mutex::new(0),
+        camera_names: Mutex::new(HashMap::new()),
     });
 
     println!("======================================================");
@@ -137,6 +181,7 @@ async fn main() -> Result<()> {
             .service(api_init)
             .service(api_status)
             .service(api_toggle)
+            .service(api_rename)
             .service(api_events)
             .service(fs::Files::new("/captures", STORAGE_FOLDER))
             .service(fs::Files::new("/", "static").index_file("index.html"))
@@ -169,9 +214,9 @@ async fn main() -> Result<()> {
         
         for (key, path) in &c_state.config.system_models {
             if key == "face" {
-                match FaceDetectorYN::create(path, "", Size::new(0, 0), 0.6, 0.3, 5000, 0, 0) {
+                match FaceDetectorYN::create(path, "", Size::new(320, 320), 0.4, 0.3, 5000, 0, 0) {
                     Ok(m) => { 
-                        println!("✅ LOADED: [Face] {}", key);
+                        println!("✅ LOADED: [Face] {} with input size 320x320", key);
                         models.insert(key.clone(), AiModel::Face(m));
                     },
                     Err(_) => eprintln!("⚠️ SKIPPED: [Face] Model missing at {}", path),
@@ -206,10 +251,14 @@ async fn main() -> Result<()> {
                             if let Some(ai_model) = models.get_mut(&model_key) {
                                 match ai_model {
                                     AiModel::Face(detector) => {
-                                        let _ = run_face_inference(&frame, detector, &model_key, cam_name);
+                                        if let Err(e) = run_face_inference(&frame, detector, &model_key, cam_name) {
+                                            eprintln!("[ERROR] Face inference failed: {}", e);
+                                        }
                                     },
                                     AiModel::Yolo(net) => {
-                                        let _ = run_yolo_inference(&frame, net, &model_key, cam_name);
+                                        if let Err(e) = run_yolo_inference(&frame, net, &model_key, cam_name) {
+                                            eprintln!("[ERROR] YOLO inference failed: {}", e);
+                                        }
                                     }
                                 }
                                 processed = true;
@@ -275,12 +324,12 @@ fn run_producer(conf: CameraConfig, tx: flume::Sender<(usize, Vec<u8>)>, running
 
 fn run_face_inference(frame: &Mat, detector: &mut Ptr<FaceDetectorYN>, model_name: &str, cam_name: &str) -> Result<()> {
     let mut small = Mat::default();
-    let size = Size::new(640, 360);
+    let size = Size::new(320, 320);
     imgproc::resize(frame, &mut small, size, 0.0, 0.0, imgproc::INTER_LINEAR)?;
-    detector.set_input_size(size)?;
+    // Input size is already set during model creation, no need to set it again
     let mut faces = Mat::default();
     detector.detect(&small, &mut faces)?;
-
+    
     if faces.rows() > 0 {
         // FORCE UPPERCASE NAMING: Cam_FACE_Time.jpg
         let fname = format!("{}/{}_{}_{}.jpg", STORAGE_FOLDER, cam_name, model_name.to_uppercase(), chrono::Local::now().format("%H-%M-%S"));
